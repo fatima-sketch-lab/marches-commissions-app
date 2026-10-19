@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SynapMarchés - Commission Technique & Achats Hospitaliers Asynchrones</title>
+  <meta name="description" content="Plateforme intelligente de commission des marchés hospitaliers : validation technique asynchrone, gestion automatique du quorum et suppléants, et relances multi-canaux.">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- Canvas Confetti for PV validation -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app" class="app-layout">
+    
+    <!-- Top Global Notification Banner (Escalations & Alerte en temps réel) -->
+    <div id="escalation-ticker" class="escalation-ticker hidden">
+      <div class="ticker-content">
+        <i data-lucide="alert-triangle" class="ticker-icon"></i>
+        <span id="ticker-text">Alerte échéance critique : Échographes 4D (J-1). Escalade SMS envoyée au Pr. Benali.</span>
+      </div>
+      <button class="ticker-close" onclick="closeTicker()">&times;</button>
+    </div>
+
+    <!-- Header Navigation -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-logo">
+          <i data-lucide="shield-check"></i>
+        </div>
+        <div class="brand-info">
+          <h1>Synap<span>Marchés</span></h1>
+          <p class="brand-subtitle">Commission Technique & Achats Hospitaliers</p>
+        </div>
+        <span class="badge-asynchro">
+          <span class="pulse-dot"></span> Mode Asynchrone Actif
+        </span>
+      </div>
+
+      <!-- Quick Stats Top Bar -->
+      <div class="header-metrics">
+        <div class="metric-pill">
+          <span class="metric-label">Délai Moyen</span>
+          <span class="metric-val text-success">8.5 jours <small class="text-muted">(au lieu de 42j)</small></span>
+        </div>
+        <div class="metric-pill">
+          <span class="metric-label">Réunions Évitées</span>
+          <span class="metric-val text-primary">76%</span>
+        </div>
+        <div class="metric-pill">
+          <span class="metric-label">Quorum Atteint 1er tour</span>
+          <span class="metric-val text-success">92%</span>
+        </div>
+      </div>
+
+      <!-- Role Switcher & User Profile -->
+      <div class="header-actions">
+        <div class="role-selector-container">
+          <label for="current-user-select" class="role-label">
+            <i data-lucide="user-check"></i> Vue Active :
+          </label>
+          <select id="current-user-select" class="role-select" onchange="handleUserChange(this.value)">
+            <optgroup label="Direction & Service des Marchés">
+              <option value="marches_admin" selected>Mme Sophie Lambert (Responsable Marchés)</option>
+              <option value="directeur_achats">Dr. Marc Villeneuve (Dir. Achats & CME)</option>
+            </optgroup>
+            <optgroup label="Évaluateurs & Praticiens Hospitaliers">
+              <option value="pr_benali">Pr. Karim Benali (Chirurgie Cardiaque - Titulaire)</option>
+              <option value="dr_moreau">Dr. Claire Moreau (Chirurgie - Suppléante Pr. Benali)</option>
+              <option value="dr_laurent">Dr. Hélène Laurent (Pharmacie Hospitalière)</option>
+              <option value="ing_dubois">M. Julien Dubois (Ingénieur Biomédical)</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <button class="btn btn-outline btn-icon" id="btn-notifications" onclick="toggleNotificationsModal()" title="Centre d'alertes & relances">
+          <i data-lucide="bell"></i>
+          <span class="badge-count" id="notif-count">3</span>
+        </button>
+
+        <button class="btn btn-primary" onclick="openNewDossierModal()">
+          <i data-lucide="plus-circle"></i> Nouveau Dossier
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace Layout -->
+    <div class="app-body">
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar">
+        <nav class="sidebar-nav">
+          <button class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Tableau de Bord</span>
+          </button>
+          <button class="nav-item" data-tab="dossiers" onclick="switchTab('dossiers')">
+            <i data-lucide="folder-kanban"></i>
+            <span>Dossiers Techniques</span>
+            <span class="nav-badge" id="total-dossiers-badge">4</span>
+          </button>
+          <button class="nav-item" data-tab="quorum-planning" onclick="switchTab('quorum-planning')">
+            <i data-lucide="users"></i>
+            <span>Quorum & Suppléants</span>
+            <span class="nav-badge warning" id="quorum-alerts-badge">1 alerte</span>
+          </button>
+          <button class="nav-item" data-tab="relances-escalades" onclick="switchTab('relances-escalades')">
+            <i data-lucide="send"></i>
+            <span>Relances & Escalades</span>
+          </button>
+          <button class="nav-item" data-tab="analytics" onclick="switchTab('analytics')">
+            <i data-lucide="bar-chart-3"></i>
+            <span>Délais & Goulots</span>
+          </button>
+          <button class="nav-item" data-tab="pv-archive" onclick="switchTab('pv-archive')">
+            <i data-lucide="file-check"></i>
+            <span>Procès-Verbaux (PV)</span>
+          </button>
+        </nav>
+
+        <!-- Current User Status Card -->
+        <div class="sidebar-user-card" id="sidebar-user-card">
+          <div class="user-avatar" id="sidebar-user-avatar">SL</div>
+          <div class="user-meta">
+            <strong id="sidebar-user-name">Sophie Lambert</strong>
+            <span id="sidebar-user-role">Service des Marchés</span>
+          </div>
+          <div class="user-status-indicator" id="sidebar-user-status">
+            <span class="status-dot online"></span> Disponible
+          </div>
+        </div>
+
+        <!-- Quick Help / Concept box -->
+        <div class="sidebar-info-card">
+          <div class="info-card-header">
+            <i data-lucide="zap"></i>
+            <strong>Principe Asynchrone</strong>
+          </div>
+          <p>
+            Chaque membre vote en ligne avant l'échéance. 
+            <strong>Zéro réunion</strong> si aucun avis défavorable ou réserve bloquante.
+          </p>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="main-content">
+        
+        <!-- ================= SECTION 1: TABLEAU DE BORD ================= -->
+        <section id="section-dashboard" class="tab-section active">
+          <!-- Welcome Banner for Current Role -->
+          <div class="banner-context" id="user-context-banner">
+            <!-- Populated via JS according to selected role -->
+          </div>
+
+          <!-- Key Metrics Grid -->
+          <div class="kpi-grid">
+            <div class="kpi-card card-gradient-cyan">
+              <div class="kpi-header">
+                <span>Dossiers Actifs</span>
+                <i data-lucide="folder"></i>
+              </div>
+              <div class="kpi-body">
+                <span class="kpi-value" id="kpi-active-count">4</span>
+                <span class="kpi-sub"><strong class="text-success">2</strong> en vote direct &bull; <strong class="text-warning">1</strong> réserve</span>
+              </div>
+            </div>
+
+            <div class="kpi-card card-gradient-emerald">
+              <div class="kpi-header">
+                <span>Temps Moyen de Validation</span>
+                <i data-lucide="clock"></i>
+              </div>
+              <div class="kpi-body">
+                <span class="kpi-value">8.5 <small>jours</small></span>
+                <span class="kpi-sub text-success"><i data-lucide="trending-down"></i> -33.5 jours gagnés vs physique</span>
+              </div>
+            </div>
+
+            <div class="kpi-card card-gradient-indigo">
+              <div class="kpi-header">
+                <span>Réunions Évitées</span>
+                <i data-lucide="calendar-off"></i>
+              </div>
+              <div class="kpi-body">
+                <span class="kpi-value">76%</span>
+                <span class="kpi-sub">19 commissions sur 25 validées 100% asynchrone</span>
+              </div>
+            </div>
+
+            <div class="kpi-card card-gradient-amber">
+              <div class="kpi-header">
+                <span>Suppléants Activés</span>
+                <i data-lucide="user-plus"></i>
+              </div>
+              <div class="kpi-body">
+                <span class="kpi-value" id="kpi-suppleants-count">2</span>
+                <span class="kpi-sub">Quorum sauvé sans report de délai</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Workflow Pipeline / Quick Overview -->
+          <div class="section-card">
+            <div class="card-header-flex">
+              <div>
+                <h2>Suivi en Temps Réel des Commissions en Cours</h2>
+                <p class="section-desc">Consultation, quorum des évaluateurs, avis et statut d'échéance.</p>
+              </div>
+              <div class="card-actions">
+                <div class="filter-group">
+                  <button class="filter-btn active" onclick="filterDossiersTable('all', this)">Tous</button>
+                  <button class="filter-btn" onclick="filterDossiersTable('urgent', this)">Échéance Proche</button>
+                  <button class="filter-btn" onclick="filterDossiersTable('action_required', this)">Action Requise</button>
+                  <button class="filter-btn" onclick="filterDossiersTable('validated', this)">Prêts pour PV</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Dossiers Table / Grid -->
+            <div class="dossiers-table-container">
+              <table class="custom-table" id="dashboard-dossiers-table">
+                <thead>
+                  <tr>
+                    <th>Réf & Objet du Marché</th>
+                    <th>Montant Estimé</th>
+                    <th>Échéance & Reste</th>
+                    <th>Quorum Atteint</th>
+                    <th>Avis Émis</th>
+                    <th>Statut Processus</th>
+                    <th>Actions Rapides</th>
+                  </tr>
+                </thead>
+                <tbody id="dashboard-dossiers-body">
+                  <!-- Dynamically rendered -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Two columns: Bottleneck Radar & Smart Availability Quickbox -->
+          <div class="dashboard-grid-dual">
+            
+            <!-- Quick Quorum & Absence Radar -->
+            <div class="section-card">
+              <div class="card-header-flex">
+                <div class="header-icon-title">
+                  <i data-lucide="user-x" class="text-warning"></i>
+                  <div>
+                    <h3>Gestion d'Absence & Délégation Immédiate</h3>
+                    <p class="section-desc">Basculez un médecin en indisponible pour transférer automatiquement le droit de vote au suppléant.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="members-quick-list" id="dashboard-members-quick">
+                <!-- Rendered dynamically -->
+              </div>
+            </div>
+
+            <!-- Smart Auto-Meeting Trigger -->
+            <div class="section-card">
+              <div class="card-header-flex">
+                <div class="header-icon-title">
+                  <i data-lucide="sparkles" class="text-primary"></i>
+                  <div>
+                    <h3>Moteur Décisionnel Asynchrone</h3>
+                    <p class="section-desc">Comment l'algorithme décide si une réunion physique/visio est obligatoire ou dispensée.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="decision-rules-container">
+                <div class="rule-box rule-success">
+                  <div class="rule-status"><i data-lucide="check-circle-2"></i> CAS A : Consensus Total</div>
+                  <p>Tous les membres votent <strong>Favorable</strong> avant l'échéance &rarr; <strong>Aucune réunion</strong>. Le PV officiel certifié est généré et signé électroniquement immédiatement.</p>
+                </div>
+
+                <div class="rule-box rule-warning">
+                  <div class="rule-status"><i data-lucide="alert-circle"></i> CAS B : Réserves Mineures</div>
+                  <p>Un médecin émet une réserve technique (ex: SAV, connectique) &rarr; Le fournisseur répond par écrit sur la plateforme sous 48h. Si levée, PV validé sans réunion.</p>
+                </div>
+
+                <div class="rule-box rule-danger">
+                  <div class="rule-status"><i data-lucide="users-2"></i> CAS C : Désaccord ou Avis Défavorable</div>
+                  <p>Avis défavorable motivé &rarr; L'application calcule immédiatement le créneau optimal où le quorum est disponible et programme une <strong>micro-réunion ciblée de 20 min</strong> sur le point bloquant.</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+
+        <!-- ================= SECTION 2: DOSSIERS TECHNIQUES ================= -->
+        <section id="section-dossiers" class="tab-section">
+          <div class="section-card">
+            <div class="card-header-flex">
+              <div>
+                <h2>Centralisation des Dossiers Techniques des Marchés</h2>
+                <p class="section-desc">Cahiers des charges (CCTP), offres comparées, grilles de notation et espace de vote asynchrone.</p>
+              </div>
+              <div class="card-actions">
+                <div class="search-input-wrapper">
+                  <i data-lucide="search"></i>
+                  <input type="text" id="search-dossiers" placeholder="Rechercher par référence, équipement, service..." onkeyup="filterDossiersList()">
+                </div>
+                <button class="btn btn-primary" onclick="openNewDossierModal()">
+                  <i data-lucide="plus"></i> Publier Nouveau Marché
+                </button>
+              </div>
+            </div>
+
+            <!-- Dossiers Cards List -->
+            <div class="dossiers-cards-grid" id="dossiers-cards-container">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ================= SECTION 3: QUORUM, DISPONIBILITÉS & SUPPLÉANTS ================= -->
+        <section id="section-quorum-planning" class="tab-section">
+          <div class="section-card">
+            <div class="card-header-flex">
+              <div>
+                <h2>Gestion Intelligente du Quorum & Matrice des Suppléants</h2>
+                <p class="section-desc">
+                  Assurez la validité légale de la commission. En cas d'indisponibilité d'un chef de service ou médecin, 
+                  le suppléant agréé est désigné sans interrompre le délai réglementaire.
+                </p>
+              </div>
+              <button class="btn btn-outline" onclick="openAbsenceDeclarationModal()">
+                <i data-lucide="calendar-x-2"></i> Déclarer une Indisponibilité
+              </button>
+            </div>
+
+            <!-- Members / Commission composition table -->
+            <div class="table-card-wrapper">
+              <h3 class="subheading"><i data-lucide="shield"></i> Annuaire de la Commission Médicale & Technique des Achats</h3>
+              <table class="custom-table" id="quorum-members-table">
+                <thead>
+                  <tr>
+                    <th>Membre Titulaire</th>
+                    <th>Collège / Spécialité</th>
+                    <th>Statut Actuel</th>
+                    <th>Suppléant Officiel</th>
+                    <th>Statut du Suppléant</th>
+                    <th>Délégation de Signature</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="quorum-members-body">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Smart Meeting Scheduler Box (when quorum is needed for disagreement) -->
+            <div class="mt-8 scheduler-container">
+              <div class="card-header-flex">
+                <div>
+                  <h3><i data-lucide="calendar-clock" class="text-primary"></i> Planificateur de Réunion d'Arbitrage (Si Désaccord)</h3>
+                  <p class="section-desc">
+                    Synchronisation automatique des disponibilités pour le marché sélectionné. L'algorithme propose uniquement 
+                    les créneaux garantissant <strong>le quorum juridique minimal (au moins 75% des voix)</strong>.
+                  </p>
+                </div>
+                <div class="select-dossier-small">
+                  <label>Marché concerné :</label>
+                  <select id="scheduler-dossier-select" onchange="renderSchedulerSlots(this.value)">
+                    <!-- Options populated via JS -->
+                  </select>
+                </div>
+              </div>
+
+              <!-- Available slots cards -->
+              <div class="slots-grid" id="scheduler-slots-grid">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ================= SECTION 4: RELANCES ET ESCALADES AUTOMATIQUES ================= -->
+        <section id="section-relances-escalades" class="tab-section">
+          <div class="section-card">
+            <div class="card-header-flex">
+              <div>
+                <h2>Centre de Relances Automatiques & Escalades Hiérarchiques</h2>
+                <p class="section-desc">
+                  Protocole de rappels gradués (J-5 E-mail &bull; J-2 WhatsApp/SMS &bull; J-0 Appel / Escalade CME).
+                  Chaque membre peut voter via un lien express sécurisé sans saisie fastidieuse.
+                </p>
+              </div>
+              <button class="btn btn-primary" onclick="simulateFullReminderCycle()">
+                <i data-lucide="play"></i> Simuler un Cycle de Relance
+              </button>
+            </div>
+
+            <!-- Workflow Visual Escalation Ladder -->
+            <div class="escalation-ladder">
+              <div class="ladder-step step-1">
+                <div class="step-badge">Phase 1 (J - 5)</div>
+                <div class="step-icon"><i data-lucide="mail"></i></div>
+                <h4>Email Récapitulatif Doux</h4>
+                <p>Envoi du dossier technique, synthèse comparative et lien de vote direct.</p>
+                <span class="step-stat text-success"><i data-lucide="check"></i> 65% de réponses</span>
+              </div>
+
+              <div class="ladder-step step-2">
+                <div class="step-badge">Phase 2 (J - 2)</div>
+                <div class="step-icon"><i data-lucide="message-square"></i></div>
+                <h4>Rappel SMS / WhatsApp Express</h4>
+                <p>Message concis sur smartphone avec bouton d'approbation en 1 clic pour les médecins au bloc.</p>
+                <span class="step-stat text-primary"><i data-lucide="check"></i> 25% de réponses</span>
+              </div>
+
+              <div class="ladder-step step-3">
+                <div class="step-badge">Phase 3 (J - 0 / Retard)</div>
+                <div class="step-icon"><i data-lucide="alert-octagon"></i></div>
+                <h4>Escalade Directeur & Suppléant</h4>
+                <p>Alerte envoyée à la Direction des Achats + Bascule automatique sur le suppléant agréé.</p>
+                <span class="step-stat text-danger"><i data-lucide="zap"></i> Quorum sauvé</span>
+              </div>
+            </div>
+
+            <!-- Interactive Live Log of Reminders -->
+            <div class="mt-8">
+              <div class="card-header-flex">
+                <h3>Journal des Relances Récemment Envoyées</h3>
+                <span class="badge-status info" id="live-relance-status"><i data-lucide="check-circle"></i> Service actif</span>
+              </div>
+
+              <div class="reminders-table-wrapper">
+                <table class="custom-table" id="reminders-table">
+                  <thead>
+                    <tr>
+                      <th>Destinataire</th>
+                      <th>Marché Concerné</th>
+                      <th>Canal</th>
+                      <th>Niveau de Relance</th>
+                      <th>Date / Heure</th>
+                      <th>Statut Réception</th>
+                      <th>Action Manuelle</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reminders-table-body">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ================= SECTION 5: ANALYTICS & GOULOTS D'ÉTRANGLEMENT ================= -->
+        <section id="section-analytics" class="tab-section">
+          <div class="section-card">
+            <div class="card-header-flex">
+              <div>
+                <h2>Tableau de Bord Analytique & Baromètre de Réactivité</h2>
+                <p class="section-desc">
+                  Identifiez les délais moyens, la réduction du temps de passation des marchés et les goulots d'étranglement 
+                  (services ou collèges accusant les plus forts retards).
+                </p>
+              </div>
+              <button class="btn btn-outline" onclick="exportAnalyticsReport()">
+                <i data-lucide="download"></i> Exporter le Rapport de Performance
+              </button>
+            </div>
+
+            <!-- Stats Overview Cards -->
+            <div class="analytics-stat-row">
+              <div class="stat-box">
+                <div class="stat-number text-success">-79%</div>
+                <div class="stat-desc">Réduction globale des délais de commission</div>
+                <div class="stat-detail">De 42 jours en moyenne &rarr; 8.5 jours</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-number text-primary">124 h</div>
+                <div class="stat-desc">Temps médical épargné</div>
+                <div class="stat-detail">Pas de réunions inutiles pour les chirurgiens & médecins</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-number text-warning">0 litige</div>
+                <div class="stat-desc">Sécurité juridique & Quorum</div>
+                <div class="stat-detail">100% des avis et votes tracés avec horodatage</div>
+              </div>
+            </div>
+
+            <!-- Responsive Performance vs Bottlenecks -->
+            <div class="dashboard-grid-dual mt-8">
+              <!-- Collège / Member Reactivity Ranking -->
+              <div class="inner-card">
+                <h3><i data-lucide="gauge" class="text-primary"></i> Réactivité par Collège Professionnel</h3>
+                <p class="section-desc">Temps moyen de retour d'avis après notification du dossier.</p>
+
+                <div class="reactivity-bars">
+                  <div class="bar-item">
+                    <div class="bar-label">
+                      <span>Ingénierie Biomédicale</span>
+                      <strong class="text-success">2.1 jours (Exemplaire)</strong>
+                    </div>
+                    <div class="progress-bar-bg">
+                      <div class="progress-fill fill-emerald" style="width: 95%;"></div>
+                    </div>
+                  </div>
+
+                  <div class="bar-item">
+                    <div class="bar-label">
+                      <span>Pharmacie Hospitalière & Stérilisation</span>
+                      <strong class="text-primary">3.4 jours</strong>
+                    </div>
+                    <div class="progress-bar-bg">
+                      <div class="progress-fill fill-cyan" style="width: 82%;"></div>
+                    </div>
+                  </div>
+
+                  <div class="bar-item">
+                    <div class="bar-label">
+                      <span>Médecins & Chirurgiens (Praticiens Hospitaliers)</span>
+                      <strong class="text-warning">8.2 jours (Goulot principal)</strong>
+                    </div>
+                    <div class="progress-bar-bg">
+                      <div class="progress-fill fill-amber" style="width: 48%;"></div>
+                    </div>
+                  </div>
+
+                  <div class="bar-item">
+                    <div class="bar-label">
+                      <span>Direction des Soins & Hygiène</span>
+                      <strong class="text-primary">4.0 jours</strong>
+                    </div>
+                    <div class="progress-bar-bg">
+                      <div class="progress-fill fill-cyan" style="width: 75%;"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="tip-box mt-4">
+                  <i data-lucide="lightbulb"></i>
+                  <span><strong>Recommandation du système :</strong> L'activation automatique des suppléants après 48h sans réponse chez les chirurgiens permet de maintenir le délai sous 5 jours.</span>
+                </div>
+              </div>
+
+              <!-- Top Blocking Members & Automated Action -->
+              <div class="inner-card">
+                <h3><i data-lucide="alert-circle" class="text-danger"></i> Membres Fréquemment en Souffrance</h3>
+                <p class="section-desc">Membres ayant dépassé l'échéance sur les 6 derniers mois.</p>
+
+                <div class="blocking-members-list">
+                  <div class="blocking-member-row">
+                    <div class="member-info">
+                      <div class="member-avatar">KB</div>
+                      <div>
+                        <strong>Pr. Karim Benali</strong>
+                        <span>Chef de Service Chirurgie Cardiaque</span>
+                      </div>
+                    </div>
+                    <div class="member-delai">
+                      <span class="badge-status danger">4 retards</span>
+                      <small>Moyenne : 11 jours</small>
+                    </div>
+                    <button class="btn btn-sm btn-outline" onclick="autoDelegateMember('pr_benali')">
+                      Déléguer au Suppléant
+                    </button>
+                  </div>
+
+                  <div class="blocking-member-row">
+                    <div class="member-info">
+                      <div class="member-avatar">HL</div>
+                      <div>
+                        <strong>Dr. Hélène Laurent</strong>
+                        <span>Praticien - Pharmacie</span>
+                      </div>
+                    </div>
+                    <div class="member-delai">
+                      <span class="badge-status warning">1 retard</span>
+                      <small>Moyenne : 4.5 jours</small>
+                    </div>
+                    <button class="btn btn-sm btn-outline" onclick="sendDirectReminder('dr_laurent')">
+                      Relancer WhatsApp
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ================= SECTION 6: PROCÈS-VERBAUX (PV) & SIGNATURE ================= -->
+        <section id="section-pv-archive" class="tab-section">
+          <div class="section-card">
+            <div class="card-header-flex">
+              <div>
+                <h2>Registre des Procès-Verbaux (PV) & Traçabilité Juridique</h2>
+                <p class="section-desc">
+                  Génération automatisée des PV de commission technique avec feuille d'émargement électronique, 
+                  détail des votes, réserves émises et horodatage certifié conforme au Code de la commande publique.
+                </p>
+              </div>
+              <button class="btn btn-outline" onclick="openPvGeneratorModal(null)">
+                <i data-lucide="file-plus"></i> Générer un PV à la demande
+              </button>
+            </div>
+
+            <!-- Table of Generated PVs -->
+            <div class="table-card-wrapper">
+              <table class="custom-table" id="pv-archive-table">
+                <thead>
+                  <tr>
+                    <th>N° de PV</th>
+                    <th>Marché Rattaché</th>
+                    <th>Date de Validation</th>
+                    <th>Type de Commission</th>
+                    <th>Membres Signataires</th>
+                    <th>Résultat Final</th>
+                    <th>Document Officiel</th>
+                  </tr>
+                </thead>
+                <tbody id="pv-archive-body">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+
+    <!-- ================= MODALS ================= -->
+
+    <!-- Modal 1: Consultation & Vote Asynchrone -->
+    <div id="vote-modal" class="modal-overlay hidden">
+      <div class="modal-card modal-lg">
+        <div class="modal-header">
+          <div>
+            <div class="badge-status primary" id="modal-dossier-ref">MAR-2026-0042</div>
+            <h2 id="modal-dossier-title">Acquisition de 2 Échographes Cardiaques 4D</h2>
+          </div>
+          <button class="modal-close" onclick="closeVoteModal()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Two tabs inside modal: Technical Specs / Comparative Offers & Evaluation Vote -->
+          <div class="modal-tab-nav">
+            <button class="modal-tab-btn active" onclick="switchModalTab('consultation', this)">
+              <i data-lucide="file-text"></i> Dossier Technique & Offres Fournisseurs
+            </button>
+            <button class="modal-tab-btn" onclick="switchModalTab('evaluation', this)">
+              <i data-lucide="check-square"></i> Mon Vote & Évaluation Technique
+            </button>
+            <button class="modal-tab-btn" onclick="switchModalTab('quorum_status', this)">
+              <i data-lucide="users"></i> État du Quorum & Avis des Confrères
+            </button>
+          </div>
+
+          <!-- Subtab 1: Consultation -->
+          <div id="modal-tab-consultation" class="modal-subtab active">
+            <div class="docs-browser-grid">
+              <!-- Left: Document List -->
+              <div class="docs-list-panel">
+                <h4><i data-lucide="folder"></i> Pièces du Marché</h4>
+                <ul class="doc-file-list" id="modal-doc-list">
+                  <li class="active" onclick="previewDocument('cctp')">
+                    <i data-lucide="file-code"></i>
+                    <div>
+                      <strong>CCTP_Echographes_v2.pdf</strong>
+                      <small>Cahier des charges &bull; 2.4 Mo</small>
+                    </div>
+                  </li>
+                  <li onclick="previewDocument('comparatif')">
+                    <i data-lucide="table"></i>
+                    <div>
+                      <strong>Matrice_Comparative_Offres.xlsx</strong>
+                      <small>Synthèse Siemens vs GE vs Philips &bull; 1.1 Mo</small>
+                    </div>
+                  </li>
+                  <li onclick="previewDocument('biomed')">
+                    <i data-lucide="shield-check"></i>
+                    <div>
+                      <strong>Rapport_Essai_Biomedical.pdf</strong>
+                      <small>Validation électrique & sécurité &bull; 850 Ko</small>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+
+              <!-- Right: Document Preview Content -->
+              <div class="docs-preview-panel">
+                <div class="preview-header">
+                  <span id="preview-filename">CCTP_Echographes_v2.pdf - Extrait Spécifications</span>
+                  <a href="#" class="preview-download-link" onclick="alert('Téléchargement du document technique...')">
+                    <i data-lucide="download"></i> Télécharger
+                  </a>
+                </div>
+                <div class="preview-content-box" id="preview-content-box">
+                  <!-- Populated by JS -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Subtab 2: Evaluation & Vote -->
+          <div id="modal-tab-evaluation" class="modal-subtab">
+            <form id="vote-form" onsubmit="submitMemberVote(event)">
+              <div class="current-voter-alert" id="voter-badge-alert">
+                <i data-lucide="info"></i>
+                <span>Vous votez actuellement en tant que : <strong id="voter-current-name">Pr. Karim Benali</strong> (Collège Médical)</span>
+              </div>
+
+              <!-- Vote Selection: 3 clear options -->
+              <div class="vote-options-grid">
+                <label class="vote-card-option option-favorable">
+                  <input type="radio" name="vote_choice" value="FAVORABLE" required checked>
+                  <div class="vote-card-inner">
+                    <div class="vote-icon"><i data-lucide="check-circle-2"></i></div>
+                    <h3>Avis Favorable</h3>
+                    <p>Le matériel/service répond parfaitement au besoin clinique et technique sans réserve.</p>
+                  </div>
+                </label>
+
+                <label class="vote-card-option option-reserves">
+                  <input type="radio" name="vote_choice" value="RESERVES">
+                  <div class="vote-card-inner">
+                    <div class="vote-icon"><i data-lucide="alert-triangle"></i></div>
+                    <h3>Favorable avec Réserves</h3>
+                    <p>Approuvé sous condition de réponse écrite ou d'ajustement mineur par le fournisseur.</p>
+                  </div>
+                </label>
+
+                <label class="vote-card-option option-defavorable">
+                  <input type="radio" name="vote_choice" value="DEFAVORABLE">
+                  <div class="vote-card-inner">
+                    <div class="vote-icon"><i data-lucide="x-circle"></i></div>
+                    <h3>Avis Défavorable</h3>
+                    <p>Non-conformité technique ou ergonomique rédhibitoire. Déclenche une réunion d'arbitrage.</p>
+                  </div>
+                </label>
+              </div>
+
+              <!-- Scoring / Criteria Checklist -->
+              <div class="criteria-section">
+                <h4>Évaluation Détaillée par Critère</h4>
+                <div class="criteria-grid">
+                  <div class="criteria-row">
+                    <label>Conformité Clinique & Précision d'imagerie (Note / 20) :</label>
+                    <input type="number" min="0" max="20" value="18" class="form-input criteria-input" id="crit-clinique">
+                  </div>
+                  <div class="criteria-row">
+                    <label>Ergonomie & Facilité d'utilisation bloc/chambre (Note / 20) :</label>
+                    <input type="number" min="0" max="20" value="17" class="form-input criteria-input" id="crit-ergo">
+                  </div>
+                  <div class="criteria-row">
+                    <label>Maintenance Biomédicale & Disponibilité Pièces (Note / 20) :</label>
+                    <input type="number" min="0" max="20" value="16" class="form-input criteria-input" id="crit-sav">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Comment box -->
+              <div class="form-group mt-4">
+                <label for="vote-comment"><strong>Commentaires techniques & formulation des réserves éventuelles :</strong></label>
+                <textarea id="vote-comment" rows="3" class="form-textarea" placeholder="Ex: Excellente qualité d'image en sonde transœsophagienne. Exiger toutefois une garantie étendue à 5 ans avec remplacement des sondes sous 24h."></textarea>
+              </div>
+
+              <!-- Electronic Signature Confirmation Checkbox -->
+              <div class="signature-confirm-box">
+                <label class="checkbox-container">
+                  <input type="checkbox" id="sign-cert-check" required checked>
+                  <span class="checkmark"></span>
+                  <span class="cert-text">
+                    Je certifie sur l'honneur l'exactitude de mon avis technique et j'appose ma signature électronique horodatée eIDAS pour cette commission.
+                  </span>
+                </label>
+              </div>
+
+              <div class="modal-footer-actions">
+                <button type="button" class="btn btn-outline" onclick="closeVoteModal()">Annuler</button>
+                <button type="submit" class="btn btn-primary btn-lg">
+                  <i data-lucide="check"></i> Enregistrer Mon Vote Électronique
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Subtab 3: Quorum & Peer Reviews -->
+          <div id="modal-tab-quorum_status" class="modal-subtab">
+            <div class="quorum-summary-card" id="modal-quorum-summary">
+              <!-- Dynamically populated -->
+            </div>
+
+            <h4 class="mt-4"><i data-lucide="users"></i> Détail des Votes Enregistrés</h4>
+            <div class="reviews-timeline" id="modal-reviews-timeline">
+              <!-- Reviews list populated dynamically -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 2: Official PV Viewer & Print Preview -->
+    <div id="pv-modal" class="modal-overlay hidden">
+      <div class="modal-card modal-xl">
+        <div class="modal-header no-print">
+          <div>
+            <div class="badge-status success"><i data-lucide="check-circle-2"></i> Document Juridique Certifié</div>
+            <h2>Procès-Verbal de la Commission Technique des Marchés</h2>
+          </div>
+          <div class="modal-header-actions">
+            <button class="btn btn-outline btn-sm" onclick="window.print()">
+              <i data-lucide="printer"></i> Imprimer / Enregistrer en PDF
+            </button>
+            <button class="modal-close" onclick="closePvModal()">&times;</button>
+          </div>
+        </div>
+
+        <div class="modal-body printable-pv" id="pv-document-content">
+          <!-- Official Hospital PV Template inserted here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 3: Nouveau Dossier de Marché -->
+    <div id="new-dossier-modal" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2>Création & Lancement d'un Dossier Asynchrone</h2>
+          <button class="modal-close" onclick="closeNewDossierModal()">&times;</button>
+        </div>
+        <form onsubmit="handleCreateNewDossier(event)">
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Référence du Marché</label>
+              <input type="text" id="new-ref" required class="form-input" value="MAR-2026-0089">
+            </div>
+            <div class="form-group">
+              <label>Intitulé du Besoin / Matériel</label>
+              <input type="text" id="new-title" required class="form-input" placeholder="Ex: Acquisition de Respirateurs d'Anesthésie Réanimation">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Budget Estimé (€ HT)</label>
+                <input type="number" id="new-budget" required class="form-input" value="180000">
+              </div>
+              <div class="form-group">
+                <label>Délai de Vote Asynchrone (Échéance)</label>
+                <input type="date" id="new-deadline" required class="form-input">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Service Bénéficiaire</label>
+              <input type="text" id="new-service" required class="form-input" value="Département d'Anesthésie-Réanimation">
+            </div>
+            <div class="form-group">
+              <label>Membres Requis au Quorum</label>
+              <div class="checkbox-tag-group">
+                <label class="tag-label"><input type="checkbox" checked disabled> Resp. Marchés (Obligatoire)</label>
+                <label class="tag-label"><input type="checkbox" checked disabled> Praticien Hospitalier Référent</label>
+                <label class="tag-label"><input type="checkbox" checked disabled> Pharmacien Hospitalier</label>
+                <label class="tag-label"><input type="checkbox" checked disabled> Ingénieur Biomédical</label>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer-actions">
+            <button type="button" class="btn btn-outline" onclick="closeNewDossierModal()">Annuler</button>
+            <button type="submit" class="btn btn-primary">Publier & Déclencher Notifications</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal 4: Notification Center / SMS Preview -->
+    <div id="notifications-modal" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3><i data-lucide="bell"></i> Notifications & Canaux d'Alerte Récents</h3>
+          <button class="modal-close" onclick="toggleNotificationsModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="notifications-modal-list">
+          <!-- Populated via JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 5: Déclaration d'Indisponibilité & Délégation Suppléant -->
+    <div id="absence-modal" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3><i data-lucide="user-x"></i> Déclarer une Indisponibilité & Suppléance</h3>
+          <button class="modal-close" onclick="closeAbsenceModal()">&times;</button>
+        </div>
+        <form onsubmit="handleAbsenceDeclaration(event)">
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Membre Titulaire Indisponible</label>
+              <select id="absence-member-select" class="form-input" onchange="updateAbsenceSuppleantPreview(this.value)">
+                <!-- Populated dynamically via JS -->
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label>Motif de l'Indisponibilité</label>
+              <select id="absence-reason-select" class="form-input">
+                <option value="Bloc opératoire d'urgence">Bloc opératoire d'urgence</option>
+                <option value="Congrès médical international">Congrès médical international</option>
+                <option value="Garde de nuit / Récupération">Garde de nuit / Récupération</option>
+                <option value="Congé ou mission hospitalière">Congé ou mission hospitalière</option>
+              </select>
+            </div>
+
+            <!-- Suppléant Designated Preview Box -->
+            <div class="tip-box mt-4" id="absence-suppleant-preview-box">
+              <i data-lucide="shield-check" style="color:#38bdf8;"></i>
+              <div>
+                <strong>Suppléant Officiel Désigné :</strong>
+                <p id="absence-suppleant-text" style="font-size:0.8rem; margin-top:0.2rem; color:#f1f5f9;">Dr. Claire Moreau (Praticien Hospitalier Chirurgie)</p>
+              </div>
+            </div>
+
+            <p style="font-size:0.75rem; color:var(--text-muted); margin-top:1rem;">
+              En validant, l'application attribue immédiatement les droits de vote asynchrone au suppléant et lui envoie une notification prioritaire pour garantir le quorum sans reporter l'échéance du marché.
+            </p>
+          </div>
+          <div class="modal-footer-actions">
+            <button type="button" class="btn btn-outline" onclick="closeAbsenceModal()">Annuler</button>
+            <button type="submit" class="btn btn-primary">
+              <i data-lucide="check"></i> Activer la Délégation Immédiate
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+
+    <!-- Notification Toast Popup Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+  </div>
+
+  <!-- Scripts -->
+  <script src="mock-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
