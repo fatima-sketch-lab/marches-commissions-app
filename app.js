@@ -21,6 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initLucide();
   renderApp();
   checkUrgentDeadlines();
+  if (typeof initChatbot === "function") initChatbot();
 });
 
 function initLucide() {

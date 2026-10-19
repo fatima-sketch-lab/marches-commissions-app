@@ -40,11 +40,15 @@ def load_bundled_app():
         
     with open(os.path.join(base_dir, "app.js"), "r", encoding="utf-8") as f:
         app_js = f.read()
+
+    with open(os.path.join(base_dir, "chatbot.js"), "r", encoding="utf-8") as f:
+        chatbot_js = f.read()
         
     # Inliner les ressources pour garantir un fonctionnement autonome dans le composant Streamlit
     html = html.replace('<link rel="stylesheet" href="styles.css">', f'<style>\n{css}\n</style>')
     html = html.replace('<script src="mock-data.js"></script>', f'<script>\n{mock_data}\n</script>')
     html = html.replace('<script src="app.js"></script>', f'<script>\n{app_js}\n</script>')
+    html = html.replace('<script src="chatbot.js"></script>', f'<script>\n{chatbot_js}\n</script>')
     
     return html
 

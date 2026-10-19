@@ -87,6 +87,10 @@
           <span class="badge-count" id="notif-count">3</span>
         </button>
 
+        <button class="btn btn-outline" id="btn-header-chatbot" onclick="toggleChatbot()" title="Discuter avec SynapBot">
+          <i data-lucide="bot"></i> Assistant IA
+        </button>
+
         <button class="btn btn-primary" onclick="openNewDossierModal()">
           <i data-lucide="plus-circle"></i> Nouveau Dossier
         </button>
@@ -946,6 +950,43 @@
     </div>
 
 
+    <!-- Floating Chatbot Toggle Button -->
+    <button id="chatbot-toggle-btn" class="chatbot-toggle-btn" onclick="toggleChatbot()" title="Discuter avec l'Assistant SynapBot">
+      <span class="chatbot-pulse"></span>
+      <i data-lucide="bot" class="chatbot-btn-icon"></i>
+      <span class="chatbot-btn-label">Assistant IA</span>
+      <span class="chatbot-online-dot"></span>
+    </button>
+
+    <!-- Floating Chatbot Window -->
+    <div id="chatbot-window" class="chatbot-window hidden">
+      <div class="chatbot-header">
+        <div class="chatbot-header-info">
+          <div class="bot-header-avatar">
+            <i data-lucide="bot"></i>
+          </div>
+          <div>
+            <h4>SynapBot <span class="badge-mini">IA Marchés</span></h4>
+            <span class="bot-status"><span class="pulse-dot small"></span> En ligne &bull; Assistance Commissions</span>
+          </div>
+        </div>
+        <div class="chatbot-header-actions">
+          <button class="chat-header-btn" onclick="toggleChatbot(false)" title="Fermer">&times;</button>
+        </div>
+      </div>
+
+      <div class="chatbot-body" id="chatbot-messages">
+        <!-- Messages rendered dynamically by chatbot.js -->
+      </div>
+
+      <form class="chatbot-footer" onsubmit="handleChatSubmit(event)">
+        <input type="text" id="chatbot-input" class="chatbot-input" placeholder="Posez une question sur un dossier, quorum, suppléant..." autocomplete="off">
+        <button type="submit" class="chatbot-send-btn" title="Envoyer">
+          <i data-lucide="send"></i>
+        </button>
+      </form>
+    </div>
+
     <!-- Notification Toast Popup Container -->
     <div id="toast-container" class="toast-container"></div>
 
@@ -954,5 +995,7 @@
   <!-- Scripts -->
   <script src="mock-data.js"></script>
   <script src="app.js"></script>
+  <script src="chatbot.js"></script>
 </body>
 </html>
+
